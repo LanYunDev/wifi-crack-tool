@@ -1,3 +1,11 @@
+## macOS
+
+技术水平有限,macOS开发困难,(主要是[这玩意](https://developer.apple.com/documentation/corewlan/cwinterface?language=objc#Creating-computer-to-computer-networks)Deprecated(弃用)了,而我又是用的最新版macOS15.2,airport那些命令早删了,我想过用networksetup来连接,但这玩意速度太他妈慢了,2秒左右才验证一个)
+
+欢迎大佬指导指导我.qwq…
+
+目前状态:待后续有时间再完善完善…
+
 # WiFi暴力破解工具
 
 ## 免责声明

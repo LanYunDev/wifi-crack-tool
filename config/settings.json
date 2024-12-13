@@ -1,0 +1,5 @@
+{
+    "scan_time": 8,
+    "connect_time": 3,
+    "pwd_txt_path": "passwords.txt"
+}
