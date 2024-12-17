@@ -1,5 +1,4 @@
 {
-    "scan_time": 8,
-    "connect_time": 3,
-    "pwd_txt_path": "passwords.txt"
+    "pwd_txt_path": "/Users/lanyun/Downloads/wifi-crack-tool/passwords.txt",
+    "log_level": "INFO"
 }

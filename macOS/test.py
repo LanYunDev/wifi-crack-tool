@@ -112,6 +112,9 @@ def scan_wifi_networks(cwlan_interface=None):
 #     # 开始破解捕获的握手
 #     # crack_capture()
 
+# print("✅成功连接到网络: {network.ssid()}")
+#             sleep(3)  # 给系统一些时间建立连接
+
 def connect_to_wifi(cwlan_interface, network, password):
     """
     尝试使用给定的密码连接到WiFi网络。
@@ -279,17 +282,13 @@ def main():
         # 获取当前定位授权状态
         authorization_status = location_manager.authorizationStatus()
         # 授权状态说明：
-        # 0 = 未确定
-        # 1 = 限制
-        # 2 = 拒绝
-        # 3 = 永久授权
-        # 4 = 使用时授权
+        # 0 = 未确定 1 = 限制 2 = 拒绝 3 = 永久授权 4 = 使用时授权
         if authorization_status in [3, 4]:  # 如果授权状态是永久授权或使用时授权
             print('已获得授权，继续...')
             break  # 授权通过，退出循环继续执行
         if i >= max_wait - 1:  # 如果超过最大等待时间
             exit('未能获得授权，程序退出...')  # 退出程序并提示无法获得授权
-        sleep(1)  # 每秒检查一次授权状态，最多等待60秒
+        sleep(1)  # 每秒检查一次授权状态
 
     # 获取默认 WiFi 接口
     cwlan_client = CoreWLAN.CWWiFiClient.sharedWiFiClient()
