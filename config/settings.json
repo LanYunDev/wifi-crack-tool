@@ -1,4 +1,6 @@
 {
+    "connect_time": 3,
     "pwd_txt_path": "/Users/lanyun/Downloads/wifi-crack-tool/passwords.txt",
+    "max_memory_mb": 50,
     "log_level": "INFO"
 }

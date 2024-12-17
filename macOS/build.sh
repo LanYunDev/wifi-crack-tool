@@ -39,7 +39,7 @@ Rerun() {
 }
 
 main() {
-	file_check='test2.py'
+	file_check='wifi_crack_tool_mac.py'
 	env_pathName='.venv'
 	requirements_path='../requirements.txt'
 	arg="$#"
@@ -129,7 +129,7 @@ main() {
 	  echo "tips:第一个参数为debug,可得到更详细信息"
 	  exit 1
 	fi
-	read -r -e -p "⚙️是否需要启动?(Y/n)" flag
+	read -r -e -p "⚙️是否需要启动程序?(Y/n)" flag
 	if [[ "${flag}" != 'n' ]]; then
 			echo '⚙️启动中...'
       ./dist/"${filename}".app/Contents/MacOS/"${filename}"

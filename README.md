@@ -1,10 +1,24 @@
 ## macOS
 
-技术水平有限,macOS开发困难,(主要是[这玩意](https://developer.apple.com/documentation/corewlan/cwinterface?language=objc#Creating-computer-to-computer-networks)Deprecated(弃用)了,而我又是用的最新版macOS15.2,airport那些命令早删了,我想过用networksetup来连接,但这玩意速度太他妈慢了,2秒左右才验证一个)
+技术水平有限,macOS开发困难
 
 欢迎大佬指导指导我.qwq…
 
-目前状态:待后续有时间再完善完善…
+目前状态: 能跑,但是很慢(比networksetup还慢,用networksetup实现的话还好些,用subprocess方式调用/usr/sbin/networksetup给参数进行wifi连接,但没时间搞了.python不支持强制结束线程,),单线程,支持中断恢复,字典片段读取,很不完善,还存在一些未知bug
+
+~~待后续有时间再完善完善…~~  也许没时间...
+
+todo:
+
+- [ ] 并发/多线程连接,提高速度
+- [ ] 支持掩码破解,避免使用大字典
+- [ ] 优化进度监控和管理
+- [ ] 优化网络扫描逻辑和性能
+- [ ] 整体优化代码性能和逻辑
+
+old content:
+
+(主要是[这玩意](https://developer.apple.com/documentation/corewlan/cwinterface?language=objc#Creating-computer-to-computer-networks)Deprecated(弃用)了,而我又是用的最新版macOS15.2,airport那些命令早删了,我想过用networksetup来连接,但这玩意速度太他妈慢了,2秒左右才验证一个)
 
 # WiFi暴力破解工具
 
@@ -300,4 +314,4 @@ Tips：支持Win10、Win11、Linux，MacOS暂不支持
 
 - **[新增]** 日志输出、破解成功后**自动将密码复制到剪切板**。
 - **[修复]** WiFi**中文名称乱码**，**无法正常破解**的问题。
-- **[优化]** 部分功能。
+- ## **[优化]** 部分功能。

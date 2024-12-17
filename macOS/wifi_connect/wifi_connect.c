@@ -1,75 +1,33 @@
-#include <CoreFoundation/CoreFoundation.h>
-#include <SystemConfiguration/SystemConfiguration.h>
-#include <SystemConfiguration/SCNetworkReachability.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+// wifi_connect.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-int main(int argc, const char * argv[]) {
-    // Wi-Fi 网络配置
-    CFStringRef networkName = CFSTR("your_wifi_ssid");
-    CFStringRef networkPassword = CFSTR("your_wifi_password");
-    
-    // 创建网络配置字典
-    CFMutableDictionaryRef networkConfig = CFDictionaryCreateMutable(
-        kCFAllocatorDefault, 
-        0, 
-        &kCFTypeDictionaryKeyCallBacks, 
-        &kCFTypeDictionaryValueCallBacks
-    );
-    
-    // 设置网络配置参数
-    CFDictionaryAddValue(networkConfig, kSCNetworkInterfaceTypeWiFi, networkName);
-    CFDictionaryAddValue(networkConfig, kSCNetworkInterfaceHardwareAddress, networkPassword);
-    
-    // 获取系统网络配置
-    SCPreferencesRef prefs = SCPreferencesCreate(
-        kCFAllocatorDefault, 
-        CFSTR("WiFi Connection"), 
-        NULL
-    );
-    
-    if (!prefs) {
-        printf("无法创建系统首选项\n");
+int main(int argc, char *argv[]) {
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <interface> <ssid> <password>\n", argv[0]);
         return 1;
     }
-    
-    // 尝试应用网络配置
-    Boolean result = SCPreferencesSetValue(
-        prefs, 
-        CFSTR("WiFiNetwork"), 
-        networkConfig
-    );
-    
-    if (!result) {
-        printf("设置网络配置失败\n");
-        CFRelease(prefs);
-        CFRelease(networkConfig);
+
+    char *interface = argv[1];
+    char *ssid = argv[2];
+    char *password = argv[3];
+
+    // macOS networksetup命令连接WiFi
+    char command[512];
+    snprintf(command, sizeof(command), 
+        "/usr/sbin/networksetup -setairportnetwork %s \"%s\" \"%s\"", 
+        interface, ssid, password);
+
+    // 执行命令并返回结果
+    int result = system(command);
+
+    if (result == 0) {
+        printf("WiFi connected successfully\n");
+        return 0;
+    } else {
+        fprintf(stderr, "WiFi connection failed\n");
         return 1;
     }
-    
-    // 保存配置
-    result = SCPreferencesCommitChanges(prefs);
-    if (!result) {
-        printf("保存网络配置失败\n");
-        CFRelease(prefs);
-        CFRelease(networkConfig);
-        return 1;
-    }
-    
-    // 应用配置
-    result = SCPreferencesApplyChanges(prefs);
-    if (!result) {
-        printf("应用网络配置失败\n");
-        CFRelease(prefs);
-        CFRelease(networkConfig);
-        return 1;
-    }
-    
-    printf("Wi-Fi 网络配置尝试完成\n");
-    
-    // 清理
-    CFRelease(prefs);
-    CFRelease(networkConfig);
-    
-    return 0;
 }
